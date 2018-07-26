@@ -22,6 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "codegen/CodeGenerator.hpp"
+#include "codegen/CodeGenerator_inlines.hpp"
 #include "codegen/InstOpCode.hpp"
 #include "codegen/Instruction.hpp"
 #include "codegen/Machine.hpp"
@@ -62,7 +63,6 @@ OMR::X86::Instruction::Instruction(TR::CodeGenerator *cg, TR::Instruction *prece
 
    }
 
-
 void
 OMR::X86::Instruction::initialize(TR::CodeGenerator *cg, TR::RegisterDependencyConditions *cond, TR_X86OpCodes op, bool flag)
    {
@@ -80,6 +80,11 @@ OMR::X86::Instruction::initialize(TR::CodeGenerator *cg, TR::RegisterDependencyC
       }
    }
 
+TR::Instruction* OMR::X86::Instruction::setException(TR::LabelSymbol *exception)
+   {
+   cg()->appendExceptionHandler(self(), exception);
+   return self();
+   }
 
 void OMR::X86::Instruction::assumeValidInstruction()
    {

@@ -1848,6 +1848,10 @@ void OMR::X86::CodeGenerator::doBinaryEncoding()
       traceMsg(self()->comp(), "\n</instructions>\n");
 
    estimate = self()->setEstimatedLocationsForSnippetLabels(estimate);
+
+   // Size of Structured Exception Handler Table
+   estimate += self()->getStructuredExceptionHandlerTableSize();
+
    // When using copyBinaryToBuffer() to copy the encoding of an instruction we
    // indiscriminatelly copy a whole integer, even if the size of the encoding
    // is less than that. This may cause the write to happen beyond the allocated

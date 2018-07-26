@@ -244,6 +244,8 @@ OMR::CodeGenerator::CodeGenerator() :
      _outOfLineColdPathNestedDepth(0),
      _codeGenPhase(self()),
      _symbolDataTypeMap(self()->comp()->allocator()),
+     _sehTable(getTypedAllocator<SEHTableEntry>(TR::comp()->allocator())),
+     _sehTableOffset(0),
      _lmmdFailed(false)
    {
    _machine = new (self()->trHeapMemory()) TR::Machine(self());
@@ -1924,15 +1926,61 @@ OMR::CodeGenerator::isMemoryUpdate(TR::Node *node)
 void
 OMR::CodeGenerator::processRelocations()
    {
-   //
-   auto iterator = _relocationList.begin();
-   while(iterator != _relocationList.end())
+   bool trace = self()->comp()->getOption(TR_TraceCG);
+   // Apply relocations
+   for(auto iterator = _relocationList.begin(); iterator != _relocationList.end(); ++iterator)
       {
       // Traverse the non-AOT/non-external labels first
 	  (*iterator)->apply(self());
-      ++iterator;
       }
-   //TR_ASSERTC(missedSite == -1, comp(), "Site %d is missing relocation\n", missedSite);
+   
+   // Setup Structured Exception Handler Table
+   if (trace)
+      traceMsg(self()->comp(), "<exceptions>\n");
+
+   if (self()->getSupportsStructuredExceptionHandling())
+      {
+      auto entry = (intptrj_t)self()->getCodeStart();
+      auto cursor = (uint32_t*)self()->getBinaryBufferCursor();
+      auto offset = (intptrj_t)cursor - entry;
+
+      TR_ASSERT(IS_32BIT_SIGNED(offset), "Offset to SEH Table is unreasonably large.");
+      _sehTableOffset = offset;
+
+      if (trace)
+         {
+         traceMsg(self()->comp(), "Method Entry = " POINTER_PRINTF_FORMAT "\n", entry);
+         traceMsg(self()->comp(), "SEH Table address = " POINTER_PRINTF_FORMAT ", offset = %08x, number of entries = %d\n", cursor, _sehTableOffset, _sehTable.size());
+         }
+
+      for (auto iterator = _sehTable.begin(); iterator != _sehTable.end(); ++iterator)
+         {
+         auto instruction = (intptrj_t)iterator->instruction->getBinaryEncoding() - entry;
+         auto exception = (intptrj_t)iterator->exception->getCodeLocation() - entry;
+         TR_ASSERT(IS_32BIT_SIGNED(instruction), "Offset to exception throwing instruction is unreasonably large.");
+         TR_ASSERT(IS_32BIT_SIGNED(exception), "Offset to exception handler entry is unreasonably large.");
+
+         auto entry = (uint8_t*)cursor;
+         *(cursor++) = (int32_t)instruction;
+         *(cursor++) = (int32_t)exception;
+         if (trace)
+            {
+            self()->comp()->getDebug()->printPrefix(self()->comp()->getOutFile(), NULL, entry, (uint8_t)(2*sizeof(*cursor)));
+            traceMsg(self()->comp(), "instruction offset = %08x, exception offset = %08x", instruction, exception);
+            }
+         }
+      *(cursor++) = 0;
+      *(cursor++) = 0;
+      self()->setBinaryBufferCursor((uint8_t*)cursor);
+      }
+   else
+      {
+      if (trace)
+         traceMsg(self()->comp(), "Structured Exception Handling is not enabled.");
+      }
+
+   if (trace)
+      traceMsg(self()->comp(), "\n</exceptions>\n");
    }
 
 #if defined(TR_HOST_ARM)

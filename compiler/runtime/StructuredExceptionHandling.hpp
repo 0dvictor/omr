@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2018 IBM Corp. and others
+ * Copyright (c) 2018, 2018 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -18,36 +18,32 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
+#ifndef OMR_RUNTIME_STRUCTUREDEXCEPTIONHANDLING_INCL
+#define OMR_RUNTIME_STRUCTUREDEXCEPTIONHANDLING_INCL
 
-#ifndef OMR_CODEGENERATOR_INLINE_INCL
-#define OMR_CODEGENERATOR_INLINE_INCL
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include "codegen/OMRCodeGenerator.hpp"
-
-inline TR::CodeGenerator* OMR::CodeGenerator::self()
+UDATA lookupStructuredExceptionHandlerTable(UDATA methodEntry, U_32 sehOffset, UDATA pc)
    {
-   return static_cast<TR::CodeGenerator*>(this);
+   if (sehOffset > 0)
+      {
+      I_32  offset = (I_32)(pc - methodEntry);
+      I_32* entry  = (I_32*)(methodEntry + sehOffset);
+      while(entry[0] != 0)
+         {
+         if (entry[0] == offset)
+            {
+            return (UDATA)(methodEntry + entry[1]);
+            }
+         entry += 2;
+         }
+      }
+   return (UDATA)NULL;
    }
 
-inline bool OMR::CodeGenerator::isIntrinsicMethodSupported(TR::RecognizedMethod m)
-   {
-   return TR::CodeGenerator::isILOpCodeSupported(TR::CodeGenerator::ilOpCodeForIntrinsicMethod(m));
-   }
-
-inline bool OMR::CodeGenerator::suppressInliningOfRecognizedMethod(TR::RecognizedMethod method)
-   {
-   return TR::CodeGenerator::isIntrinsicMethodSupported(method);
-   }
-
-inline void OMR::CodeGenerator::appendExceptionHandler(TR::Instruction* instruction, TR::LabelSymbol* exception)
-   {
-   SEHTableEntry entry = { instruction, exception };
-   _sehTable.push_back(entry);
-   }
-
-inline size_t OMR::CodeGenerator::getStructuredExceptionHandlerTableSize()
-   {
-   return self()->getSupportsStructuredExceptionHandling() ? sizeof(int32_t*) * (_sehTable.size() + 1) : 0;
-   }
-
+#ifdef __cplusplus
+}
+#endif
 #endif

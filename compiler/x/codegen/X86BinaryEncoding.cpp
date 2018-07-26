@@ -534,7 +534,7 @@ uint8_t *TR::X86LabelInstruction::generateBinaryEncoding()
             }
          }
       }
-   else if (getOpCodeValue() == LABEL)
+   else if (getOpCodeValue() == LABEL || getOpCodeValue() == OutlinedInstructionPlaceHolder)
       {
       label->setCodeLocation(instructionStart);
       immediateCursor = cursor;
@@ -559,17 +559,18 @@ uint8_t *TR::X86LabelInstruction::generateBinaryEncoding()
 
 uint8_t TR::X86LabelInstruction::getBinaryLengthLowerBound()
    {
-   if (getOpCodeValue() == LABEL)
-      return 0;
-
-   if (getOpCodeValue() == VirtualGuardNOP)
+   switch (getOpCodeValue())
       {
-      return 0;
+      case LABEL:
+      case VirtualGuardNOP:
+      case OutlinedInstructionPlaceHolder:
+         return 0;
+      default:
+         if (getOpCode().isBranchOp())
+            return getOpCode().length(self()->rexBits()) + (_permitShortening ? 0 : 4);
+         else
+            return getOpCode().length(self()->rexBits()) + 4; // assume absolute code reference
       }
-
-   if (getOpCode().isBranchOp())
-      return getOpCode().length(self()->rexBits()) + (_permitShortening ? 0 : 4);
-   return getOpCode().length(self()->rexBits()) + 4; // assume absolute code reference
    }
 
 

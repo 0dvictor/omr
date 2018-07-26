@@ -278,14 +278,16 @@ OMR::CodeGenPhase::performEmitSnippetsPhase(TR::CodeGenerator * cg, TR::CodeGenP
          estimatedSnippetStart += (*iterator)->getLength(estimatedSnippetStart);
          ++iterator;
          }
-      int32_t snippetLength = estimatedSnippetStart - cg->getEstimatedSnippetStart();
 
       diagnostic("\nAmount of code memory allocated for this function        = %d"
-                  "\nAmount of code memory consumed for this function         = %d"
-                  "\nAmount of snippet code memory consumed for this function = %d\n\n",
-                  cg->getEstimatedCodeLength(),
-                  cg->getCodeLength(),
-                  snippetLength);
+                 "\nAmount of code memory consumed for this function         = %d"
+                 "\nAmount of snippet code memory consumed for this function = %d"
+                 "\nAmount of SEH table memory consumed for this function    = %d"
+                 "\n\n",
+                 cg->getEstimatedCodeLength(),
+                 cg->getCodeLength(),
+                 estimatedSnippetStart - cg->getEstimatedSnippetStart(),
+                 cg->getStructuredExceptionHandlerTableSize());
       }
    }
 

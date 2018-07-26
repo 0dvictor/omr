@@ -1092,9 +1092,14 @@ class OMR_EXTENSIBLE CodeGenerator
    TR::RegisterPair * allocateSinglePrecisionRegisterPair(TR::Register * lo = 0, TR::Register * ho = 0);
    TR::RegisterPair * allocateFloatingPointRegisterPair(TR::Register * lo = 0, TR::Register * ho = 0);
 
-
-
    TR::SymbolReference * allocateLocalTemp(TR::DataType dt = TR::Int32, bool isInternalPointer = false);
+
+   // --------------------------------------------------------------------------
+   // Structured Exception Handling
+   //
+   inline void     appendExceptionHandler(TR::Instruction* instruction, TR::LabelSymbol* exception);
+   inline size_t   getStructuredExceptionHandlerTableSize();
+   inline uint32_t getStructuredExceptionHandlerTableOffset() const { return _sehTableOffset; }
 
    // --------------------------------------------------------------------------
    // Relocations
@@ -1560,6 +1565,9 @@ class OMR_EXTENSIBLE CodeGenerator
    bool getHasResumableTrapHandler() {return _flags1.testAny(HasResumableTrapHandler);}
    void setHasResumableTrapHandler() {_flags1.set(HasResumableTrapHandler);}
 
+   bool getSupportsStructuredExceptionHandling() { return _flags1.testAny(SupportsStructuredExceptionHandling); }
+   void setSupportsStructuredExceptionHandling() { _flags1.set(SupportsStructuredExceptionHandling); }
+
    bool performsChecksExplicitly() {return _flags1.testAny(PerformsExplicitChecks);}
    void setPerformsChecksExplicitly() {_flags1.set(PerformsExplicitChecks);}
 
@@ -1691,7 +1699,7 @@ class OMR_EXTENSIBLE CodeGenerator
       SupportsReferenceArrayCopy                         = 0x00000200,
       SupportsJavaFloatSemantics                         = 0x00000400,
       SupportsInliningOfTypeCoersionMethods              = 0x00000800,
-      // AVAILABLE                                       = 0x00001000,
+      SupportsStructuredExceptionHandling                = 0x00001000,
       SupportsVectorRegisters                            = 0x00002000,
       SupportsGlRegDepOnFirstBlock                       = 0x00004000,
       SupportsRemAsThirdChildOfDiv                       = 0x00008000,
@@ -1980,6 +1988,14 @@ class OMR_EXTENSIBLE CodeGenerator
    TR_Stack<TR::Node *> _stackOfArtificiallyInflatedNodes;
 
    CS2::HashTable<TR::Symbol*, TR::DataType, TR::Allocator> _symbolDataTypeMap;
+
+   struct SEHTableEntry
+      {
+      TR::Instruction* instruction;
+      TR::LabelSymbol* exception;
+      };
+   TR::list<SEHTableEntry> _sehTable;
+   uint32_t                _sehTableOffset;
    };
 
 }

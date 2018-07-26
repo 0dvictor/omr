@@ -97,6 +97,8 @@ class OMR_EXTENSIBLE Instruction : public OMR::Instruction
    TR_X86OpCodes getOpCodeValue() { return _opcode.getOpCodeValue(); }
    TR_X86OpCodes setOpCodeValue(TR_X86OpCodes op) { return _opcode.setOpCodeValue(op); }
 
+   TR::Instruction* setException(TR::LabelSymbol *exception);
+
    virtual bool isBranchOp() {return _opcode.isBranchOp();}
    virtual bool isLabel();
    virtual bool isRegRegMove();
