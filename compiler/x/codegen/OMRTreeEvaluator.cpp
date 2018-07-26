@@ -1243,7 +1243,132 @@ OMR::X86::TreeEvaluator::arraycmpEvaluator(
       TR::Node *node,
       TR::CodeGenerator *cg)
    {
-   return node->isArrayCmpLen() ? TR::TreeEvaluator::SSE2ArraycmpLenEvaluator(node, cg) : TR::TreeEvaluator::SSE2ArraycmpEvaluator(node, cg);
+   static bool UseOldArrayCompare = feGetEnv("TR_UseOldArrayCompare");
+   if (UseOldArrayCompare)
+      return node->isArrayCmpLen() ? TR::TreeEvaluator::SSE2ArraycmpLenEvaluator(node, cg) : TR::TreeEvaluator::SSE2ArraycmpEvaluator(node, cg);
+
+   if (!cg->getX86ProcessorInfo().supportsAVX() || !cg->getSupportsStructuredExceptionHandling())
+      {
+      auto array0 = cg->evaluate(node->getChild(0));
+      auto array1 = cg->gprClobberEvaluate(node->getChild(1), MOVRegReg());
+      auto length = cg->gprClobberEvaluate(node->getChild(2), MOVRegReg());
+      auto result = cg->allocateRegister(TR_GPR);
+
+      auto deps = generateRegisterDependencyConditions((uint8_t)3, (uint8_t)3, cg);
+      deps->addPreCondition(result, TR::RealRegister::esi, cg);
+      deps->addPreCondition(array1, TR::RealRegister::edi, cg);
+      deps->addPreCondition(length, TR::RealRegister::ecx, cg);
+      deps->addPostCondition(result, TR::RealRegister::esi, cg);
+      deps->addPostCondition(array1, TR::RealRegister::edi, cg);
+      deps->addPostCondition(length, TR::RealRegister::ecx, cg);
+
+      generateRegRegInstruction(MOVRegReg(), node, result, array0, cg);
+      generateInstruction(REPECMPSB, node, deps, cg);
+      if (node->isArrayCmpLen())
+         {
+         generateRegInstruction(SETNE1Reg, node, length, cg);
+         generateRegRegInstruction(SUBRegReg(), node, result, array0, cg);
+         generateRegRegInstruction(MOVZXReg4Reg1, node, length, length, cg);
+         generateRegRegInstruction(SUBRegReg(), node, result, length, cg);
+         }
+      else
+         {
+         generateRegInstruction(SETNE1Reg, node, result, cg);
+         generateRegRegInstruction(MOVZXReg4Reg1, node, result, result, cg);
+         }
+
+      node->setRegister(result);
+      cg->stopUsingRegister(length);
+      cg->stopUsingRegister(array1);
+      cg->decReferenceCount(node->getChild(0));
+      cg->decReferenceCount(node->getChild(1));
+      cg->decReferenceCount(node->getChild(2));
+      return result;
+      }
+   else
+      {
+      auto array0 = cg->evaluate(node->getChild(0));
+      auto array1 = cg->evaluate(node->getChild(1));
+      auto length = cg->evaluate(node->getChild(2));
+      auto result = cg->allocateRegister(TR_GPR);
+      auto tmp = cg->allocateRegister(TR_GPR);
+      auto XMM0 = cg->allocateRegister(TR_VRF);
+
+      auto dependencies = generateRegisterDependencyConditions((uint8_t)6, (uint8_t)6, cg);
+      dependencies->addPreCondition(array0, TR::RealRegister::NoReg, cg);
+      dependencies->addPreCondition(array1, TR::RealRegister::NoReg, cg);
+      dependencies->addPreCondition(length, TR::RealRegister::NoReg, cg);
+      dependencies->addPreCondition(result, TR::RealRegister::NoReg, cg);
+      dependencies->addPreCondition(tmp, TR::RealRegister::NoReg, cg);
+      dependencies->addPreCondition(XMM0, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(array0, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(array1, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(length, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(result, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(tmp, TR::RealRegister::NoReg, cg);
+      dependencies->addPostCondition(XMM0, TR::RealRegister::NoReg, cg);
+
+      auto begLabel = generateLabelSymbol(cg);
+      auto endLabel = generateLabelSymbol(cg);
+      auto exceptionLabel = generateLabelSymbol(cg);
+      auto shortLoopLabel = generateLabelSymbol(cg);
+      auto returnLabel = generateLabelSymbol(cg);
+      begLabel->setStartInternalControlFlow();
+      endLabel->setEndInternalControlFlow();
+
+      generateRegRegInstruction(XOR4RegReg, node, result, result, cg);
+
+      generateLabelInstruction(LABEL, node, begLabel, cg);
+      generateLabelInstruction(OutlinedInstructionPlaceHolder, node, exceptionLabel, cg);
+      generateRegMemInstruction(MOVDQURegMem, node, XMM0, generateX86MemoryReference(array0, result, 0, cg), cg)->setException(exceptionLabel);
+      generateRegMemInstruction(PCMPEQBRegMem, node, XMM0, generateX86MemoryReference(array1, result, 0, cg), cg)->setException(exceptionLabel);
+      generateRegRegInstruction(PMOVMSKB4RegReg, node, tmp, XMM0, cg);
+      generateRegImmInstruction(XOR4RegImm4, node, tmp, 0xffff, cg);
+      generateLabelInstruction(JNE4, node, endLabel, cg);
+      generateRegImmInstruction(ADD4RegImms, node, result, 16, cg);
+      generateRegRegInstruction(CMP4RegReg, node, result, length, cg);
+      generateLabelInstruction(JB4, node, begLabel, cg);
+
+      {
+      TR_OutlinedInstructionsGenerator og(exceptionLabel, node, cg);
+
+      generateLabelInstruction(LABEL, node, shortLoopLabel, cg);
+      generateRegMemInstruction(L1RegMem, node, tmp, generateX86MemoryReference(array0, result, 0, cg), cg);
+      generateRegMemInstruction(CMP1RegMem, node, tmp, generateX86MemoryReference(array1, result, 0, cg), cg);
+      generateLabelInstruction(JNE4, node, returnLabel, cg);
+      generateRegImmInstruction(ADD8RegImms, node, result, 1, cg);
+      generateRegRegInstruction(CMP8RegReg, node, result, length, cg);
+      generateLabelInstruction(JNE4, node, shortLoopLabel, cg);
+
+      generateLabelInstruction(LABEL, node, returnLabel, cg);
+      generateRegRegInstruction(XOR4RegReg, node, tmp, tmp, cg);
+      generateLabelInstruction(JMP4, node, endLabel, cg);
+      }
+
+      generateLabelInstruction(LABEL, node, endLabel, dependencies, cg);
+      generateRegRegInstruction(BSF4RegReg, node, tmp, tmp, cg);
+      generateRegRegInstruction(ADD8RegReg, node, result, tmp, cg);
+      generateRegRegInstruction(CMP8RegReg, node, result, length, cg);
+
+      if (node->isArrayCmpLen())
+         {
+         generateRegRegInstruction(CMOVG8RegReg, node, result, length, cg);
+         }
+      else
+         {
+         generateRegInstruction(SETL1Reg, node, result, cg);
+         generateRegRegInstruction(MOVZXReg4Reg1, node, result, result, cg);
+         }
+
+      node->setRegister(result);
+      cg->stopUsingRegister(XMM0);
+      cg->stopUsingRegister(tmp);
+      cg->stopUsingRegister(length);
+      cg->decReferenceCount(node->getChild(0));
+      cg->decReferenceCount(node->getChild(1));
+      cg->decReferenceCount(node->getChild(2));
+      return result;
+      }
    }
 
 TR::Register *OMR::X86::TreeEvaluator::SSE2ArraycmpEvaluator(TR::Node *node, TR::CodeGenerator *cg)
